@@ -1,0 +1,9 @@
+[project]
+name = "proof-of-concepts"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.uv.workspace]
+members = ["struct_logging", "boa_logging"]
