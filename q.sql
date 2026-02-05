@@ -1,33 +1,26 @@
--- Find all potential security configuration change actions
 SELECT 
+  event_time,
+  user_identity.email as user_email,
   service_name,
   action_name,
-  COUNT(*) as event_count,
-  COUNT(DISTINCT user_identity.email) as unique_users
+  response.status_code,
+  source_ip_address
 FROM system.access.audit
 WHERE 
   event_date >= current_date() - INTERVAL 30 DAYS
   AND user_identity.subject_type = 'USER'
   AND (
-    -- Look for modification verbs
-    action_name LIKE 'create%'
-    OR action_name LIKE 'update%'
-    OR action_name LIKE 'delete%'
-    OR action_name LIKE 'grant%'
-    OR action_name LIKE 'revoke%'
-    OR action_name LIKE 'add%'
-    OR action_name LIKE 'remove%'
-    OR action_name LIKE 'put%'
-    OR action_name LIKE '%Grant%'
-    OR action_name LIKE '%Revoke%'
-    OR action_name LIKE '%Permission%'
-    OR action_name LIKE '%Policy%'
-    OR action_name LIKE '%Member%'
-    OR action_name LIKE '%Assignment%'
+    -- Permission changes
+    (service_name = 'accounts' AND action_name IN ('createGroup', 'add', 'addPrincipalToGroup', 'removePrincipalFromGroup', 'revokeDbToken'))
+    OR (service_name = 'workspace' AND action_name = 'updatePermissionAssignment')
+    OR (service_name = 'sqlPermissions' AND action_name IN ('grantPermission', 'requestPermissions'))
+    OR (service_name = 'unityCatalog' AND action_name IN ('updatePermissions', 'UpdateTagSecurableAssignments'))
+    OR (service_name = 'clusterPolicies' AND action_name IN ('changeClusterPolicyAcl', 'create'))
+    OR (service_name = 'secrets' AND action_name IN ('createScope', 'putAcl'))
+    
+    -- Resource changes
+    OR (service_name = 'unityCatalog' AND action_name IN ('createCatalog', 'createSchema', 'deleteTable', 'deleteVolume', 'createTable', 'updateTables'))
+    OR (service_name = 'clusters' AND action_name IN ('create', 'delete'))
   )
-  -- Exclude obvious read operations
-  AND action_name NOT LIKE 'get%'
-  AND action_name NOT LIKE 'list%'
-  AND action_name NOT LIKE 'describe%'
-GROUP BY service_name, action_name
-ORDER BY service_name, event_count DESC;
+ORDER BY event_time DESC
+LIMIT 200;
