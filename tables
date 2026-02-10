@@ -1,0 +1,327 @@
+Perfect! Let's create a management table for sensitive tables that you can easily update, and connect it to your dashboards.
+
+Step 1: Create the Sensitive Tables Registry
+sql-- Create the registry table
+CREATE TABLE IF NOT EXISTS dev_mr_imh_im.monitoring.sensitive_tables (
+  catalog_name STRING,
+  schema_name STRING,
+  table_name STRING,
+  sensitivity_level STRING COMMENT 'HIGH, MEDIUM, LOW',
+  data_classification STRING COMMENT 'PII, Financial, Confidential, etc.',
+  sensitivity_reason STRING,
+  created_at TIMESTAMP DEFAULT current_timestamp(),
+  updated_at TIMESTAMP DEFAULT current_timestamp()
+) COMMENT 'Registry of sensitive tables to monitor';
+
+Step 2: Insert Your Initial Tables
+sql-- Insert tables from 'files' schema (or any tables you want to monitor)
+INSERT INTO dev_mr_imh_im.monitoring.sensitive_tables 
+  (catalog_name, schema_name, table_name, sensitivity_level, sensitivity_reason, data_classification)
+VALUES
+  ('dev_mr_imh_im', 'files', 'feedback_data', 'HIGH', 'Contains user feedback with PII', 'PII'),
+  ('dev_mr_imh_im', 'files', 'customer_info', 'HIGH', 'Customer personal information', 'PII'),
+  ('dev_mr_imh_im', 'files', 'transactions', 'MEDIUM', 'Transaction records', 'Financial');
+  -- ADD YOUR ACTUAL TABLE NAMES HERE
+OR bulk insert all tables from the files schema:
+sql-- Bulk insert all tables from 'files' schema
+INSERT INTO dev_mr_imh_im.monitoring.sensitive_tables 
+  (catalog_name, schema_name, table_name, sensitivity_level, sensitivity_reason, data_classification)
+SELECT 
+  catalog_name,
+  schema_name,
+  table_name,
+  'HIGH' as sensitivity_level,
+  'Table from files schema' as sensitivity_reason,
+  'File Storage' as data_classification
+FROM system.information_schema.tables
+WHERE 
+  schema_name = 'files'
+  AND catalog_name = 'dev_mr_imh_im'
+  AND table_type = 'MANAGED';
+
+Step 3: Create a Management Dashboard Query
+This query lets you view and manage the sensitive tables list:
+sql-- Query Name: "manage_sensitive_tables"
+SELECT 
+  CONCAT(catalog_name, '.', schema_name, '.', table_name) as table_full_name,
+  catalog_name,
+  schema_name,
+  table_name,
+  sensitivity_level,
+  data_classification,
+  sensitivity_reason,
+  created_at,
+  updated_at
+FROM dev_mr_imh_im.monitoring.sensitive_tables
+ORDER BY sensitivity_level DESC, catalog_name, schema_name, table_name;
+Visualization: Table (with sorting enabled)
+
+Step 4: Add/Delete/Update Operations
+Add a New Sensitive Table
+sql-- Add a single table
+INSERT INTO dev_mr_imh_im.monitoring.sensitive_tables 
+  (catalog_name, schema_name, table_name, sensitivity_level, sensitivity_reason, data_classification)
+VALUES
+  ('dev_mr_imh_im', 'files', 'new_sensitive_table', 'HIGH', 'Contains sensitive data', 'Confidential');
+
+Delete a Table from Registry
+sql-- Delete a specific table
+DELETE FROM dev_mr_imh_im.monitoring.sensitive_tables
+WHERE 
+  catalog_name = 'dev_mr_imh_im'
+  AND schema_name = 'files'
+  AND table_name = 'old_table_name';
+
+Update a Table's Sensitivity Level
+sql-- Update sensitivity level
+UPDATE dev_mr_imh_im.monitoring.sensitive_tables
+SET 
+  sensitivity_level = 'MEDIUM',
+  data_classification = 'Internal',
+  updated_at = current_timestamp()
+WHERE 
+  catalog_name = 'dev_mr_imh_im'
+  AND schema_name = 'files'
+  AND table_name = 'some_table';
+
+Bulk Delete All Tables from a Schema
+sql-- Remove all tables from a specific schema
+DELETE FROM dev_mr_imh_im.monitoring.sensitive_tables
+WHERE 
+  catalog_name = 'dev_mr_imh_im'
+  AND schema_name = 'old_schema';
+
+Step 5: Update Your Dashboard Queries to Use the Registry
+Now update your existing sensitive table access queries to automatically use this registry:
+Updated Main Query - Uses Registry
+sql-- Main query: Sensitive Table Access (Dynamic)
+SELECT 
+  a.event_time,
+  a.user_identity.email as user_email,
+  a.user_identity.subject_type as user_type,
+  a.action_name,
+  
+  -- Table info
+  CONCAT(a.request_params.catalog_name, '.', 
+         a.request_params.schema_name, '.', 
+         a.request_params.table_name) as table_full_name,
+  
+  -- Execution context
+  a.request_params.notebook_path,
+  a.request_params.job_id,
+  a.request_params.warehouse_id,
+  
+  -- From registry
+  st.sensitivity_level,
+  st.data_classification,
+  st.sensitivity_reason,
+  
+  -- Operation category
+  CASE 
+    WHEN a.action_name = 'getTable' THEN 'READ_METADATA'
+    WHEN a.action_name = 'generateTemporaryTableCredential' THEN 'READ_DATA'
+    WHEN a.action_name = 'createTable' THEN 'CREATE'
+    WHEN a.action_name = 'updateTables' THEN 'MODIFY'
+    ELSE a.action_name
+  END as operation_category,
+  
+  a.response.status_code,
+  a.source_ip_address
+  
+FROM system.access.audit a
+INNER JOIN dev_mr_imh_im.monitoring.sensitive_tables st
+  ON a.request_params.catalog_name = st.catalog_name
+  AND a.request_params.schema_name = st.schema_name
+  AND a.request_params.table_name = st.table_name
+WHERE 
+  a.service_name = 'unityCatalog'
+  AND a.action_name IN (
+    'getTable',
+    'createTable',
+    'updateTables',
+    'generateTemporaryTableCredential'
+  )
+  AND a.event_date >= current_date() - INTERVAL 90 DAYS
+ORDER BY a.event_time DESC
+LIMIT 200;
+Key Change: The INNER JOIN with sensitive_tables means only tables in your registry are monitored.
+
+Updated KPI Queries
+sql-- KPI: Total Access to Sensitive Tables (24h)
+SELECT 
+  COUNT(*) as total_access
+FROM system.access.audit a
+INNER JOIN dev_mr_imh_im.monitoring.sensitive_tables st
+  ON a.request_params.catalog_name = st.catalog_name
+  AND a.request_params.schema_name = st.schema_name
+  AND a.request_params.table_name = st.table_name
+WHERE 
+  a.service_name = 'unityCatalog'
+  AND a.action_name IN ('getTable', 'generateTemporaryTableCredential')
+  AND a.event_time >= current_timestamp() - INTERVAL 24 HOURS;
+
+Step 6: Create a Management Dashboard
+Create a separate dashboard for managing your sensitive tables list:
+Dashboard: Sensitive Tables Management
+Query 1: Current Sensitive Tables List
+sql-- Query Name: "current_sensitive_tables_list"
+SELECT 
+  CONCAT(catalog_name, '.', schema_name, '.', table_name) as table_full_name,
+  sensitivity_level,
+  data_classification,
+  sensitivity_reason,
+  created_at
+FROM dev_mr_imh_im.monitoring.sensitive_tables
+ORDER BY 
+  CASE sensitivity_level
+    WHEN 'HIGH' THEN 1
+    WHEN 'MEDIUM' THEN 2
+    WHEN 'LOW' THEN 3
+  END,
+  table_full_name;
+Visualization: Table
+
+Query 2: Count by Sensitivity Level
+sql-- Query Name: "tables_by_sensitivity_level"
+SELECT 
+  sensitivity_level,
+  COUNT(*) as table_count
+FROM dev_mr_imh_im.monitoring.sensitive_tables
+GROUP BY sensitivity_level
+ORDER BY 
+  CASE sensitivity_level
+    WHEN 'HIGH' THEN 1
+    WHEN 'MEDIUM' THEN 2
+    WHEN 'LOW' THEN 3
+  END;
+Visualization: Counter or Bar Chart
+
+Query 3: Count by Data Classification
+sql-- Query Name: "tables_by_classification"
+SELECT 
+  data_classification,
+  COUNT(*) as table_count
+FROM dev_mr_imh_im.monitoring.sensitive_tables
+GROUP BY data_classification
+ORDER BY table_count DESC;
+Visualization: Pie Chart
+
+Query 4: Recently Added Tables
+sql-- Query Name: "recently_added_tables"
+SELECT 
+  CONCAT(catalog_name, '.', schema_name, '.', table_name) as table_full_name,
+  sensitivity_level,
+  data_classification,
+  created_at
+FROM dev_mr_imh_im.monitoring.sensitive_tables
+ORDER BY created_at DESC
+LIMIT 10;
+Visualization: Table
+
+Query 5: Tables Not in Registry but Accessed
+This finds tables that are being accessed but aren't in your sensitive tables registry:
+sql-- Query Name: "unregistered_tables_accessed"
+SELECT 
+  CONCAT(a.request_params.catalog_name, '.', 
+         a.request_params.schema_name, '.', 
+         a.request_params.table_name) as table_full_name,
+  COUNT(*) as access_count,
+  COUNT(DISTINCT a.user_identity.email) as unique_users,
+  MAX(a.event_time) as last_access
+FROM system.access.audit a
+LEFT JOIN dev_mr_imh_im.monitoring.sensitive_tables st
+  ON a.request_params.catalog_name = st.catalog_name
+  AND a.request_params.schema_name = st.schema_name
+  AND a.request_params.table_name = st.table_name
+WHERE 
+  a.service_name = 'unityCatalog'
+  AND a.action_name = 'getTable'
+  AND a.event_date >= current_date() - INTERVAL 30 DAYS
+  AND st.table_name IS NULL  -- Not in registry
+  AND a.request_params.schema_name = 'files'  -- Only check 'files' schema
+GROUP BY table_full_name
+ORDER BY access_count DESC
+LIMIT 20;
+Visualization: Table
+Purpose: Shows you tables you might want to add to your sensitive tables registry
+
+Step 7: Workflow for Managing Tables
+Adding a New Table:
+
+Go to Queries in Databricks SQL
+Create a new query with:
+
+sqlINSERT INTO dev_mr_imh_im.monitoring.sensitive_tables 
+  (catalog_name, schema_name, table_name, sensitivity_level, sensitivity_reason, data_classification)
+VALUES
+  ('dev_mr_imh_im', 'files', 'new_table', 'HIGH', 'Contains sensitive data', 'PII');
+
+Run it
+Your dashboards will automatically start monitoring this table!
+
+
+Removing a Table:
+
+Create a query:
+
+sqlDELETE FROM dev_mr_imh_im.monitoring.sensitive_tables
+WHERE 
+  catalog_name = 'dev_mr_imh_im'
+  AND schema_name = 'files'
+  AND table_name = 'table_to_remove';
+
+Run it
+Your dashboards will stop monitoring this table
+
+
+Viewing Current List:
+
+Run the current_sensitive_tables_list query
+See all tables currently being monitored
+
+
+Step 8: Create Helper Queries (Optional)
+Make it easier to add/remove tables:
+Quick Add Template
+sql-- Save this as a template query: "add_sensitive_table"
+-- Just update the VALUES before running
+
+INSERT INTO dev_mr_imh_im.monitoring.sensitive_tables 
+  (catalog_name, schema_name, table_name, sensitivity_level, sensitivity_reason, data_classification)
+VALUES
+  ('dev_mr_imh_im',    -- catalog
+   'files',            -- schema
+   'TABLE_NAME_HERE',  -- ← CHANGE THIS
+   'HIGH',             -- HIGH/MEDIUM/LOW
+   'Reason here',      -- ← CHANGE THIS
+   'PII'               -- PII/Financial/Confidential/etc.
+  );
+
+Quick Delete Template
+sql-- Save this as: "remove_sensitive_table"
+-- Just update the table_name before running
+
+DELETE FROM dev_mr_imh_im.monitoring.sensitive_tables
+WHERE 
+  catalog_name = 'dev_mr_imh_im'
+  AND schema_name = 'files'
+  AND table_name = 'TABLE_NAME_HERE';  -- ← CHANGE THIS
+
+Benefits of This Approach
+✅ Centralized management - One place to add/remove tables
+✅ Automatic updates - Dashboards automatically reflect changes
+✅ No query editing - Don't need to update dashboard queries when adding tables
+✅ Audit trail - created_at and updated_at timestamps
+✅ Metadata - Store sensitivity level, classification, reasons
+
+Summary
+
+✅ Create sensitive_tables registry table
+✅ Insert your initial tables (files schema or specific tables)
+✅ Update dashboard queries to use INNER JOIN with registry
+✅ Add tables by running INSERT statements
+✅ Remove tables by running DELETE statements
+✅ View list with management dashboard queries
+
+Now you have full control over which tables are monitored! 🎯
+Do you want me to help you set up the initial list of tables from your files schema?
