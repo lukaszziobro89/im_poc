@@ -1,0 +1,67 @@
+Subject: {{#is_alert}}🔴 ALERT: High 5xx Error Rate on {{service.name}}{{/is_alert}}{{#is_recovery}}✅ RECOVERED: 5xx Error Rate Back to Normal on {{service.name}}{{/is_recovery}}{{#is_warning}}🟡 WARNING: Elevated 5xx Error Rate on {{service.name}}{{/is_warning}}
+
+{{#is_alert}}
+🔴 **ALERT: 5xx Error Rate Exceeded 1%**
+
+The 5xx error rate has been above **1%** for the past 10 minutes and requires immediate attention.
+
+- **Current value:** {{value}}%
+- **Threshold:** > 1%
+- **Triggered at:** {{last_triggered_at}}
+- **Service:** {{service.name}}
+- **Environment:** {{env}}
+
+**Suggested actions:**
+1. Check service logs → [Log Explorer](https://app.datadoghq.com/logs)
+2. Inspect Kubernetes pod health for CrashLoopBackOff or restarts
+3. Review upstream dependencies (Kafka, Azure, DB)
+4. Check recent deployments that may have introduced regressions
+
+[View Monitor]({{url}}) | [View Dashboard](https://app.datadoghq.com/dashboard)
+{{/is_alert}}
+
+{{#is_warning}}
+🟡 **WARNING: 5xx Error Rate Elevated (>0.5%)**
+
+The 5xx error rate is elevated but has not yet crossed the critical threshold.
+
+- **Current value:** {{value}}%
+- **Warning threshold:** > 0.5%
+- **Service:** {{service.name}}
+- **Environment:** {{env}}
+
+Monitor closely — no action required yet unless trend continues.
+
+[View Monitor]({{url}})
+{{/is_warning}}
+
+{{#is_recovery}}
+✅ **RECOVERED: 5xx Error Rate Back to Normal**
+
+The 5xx error rate has dropped below the threshold and the issue appears resolved.
+
+- **Current value:** {{value}}%
+- **Threshold:** > 1%
+- **Recovered at:** {{last_triggered_at}}
+- **Service:** {{service.name}}
+- **Environment:** {{env}}
+
+No further action required. Please document the incident if applicable.
+
+[View Monitor]({{url}})
+{{/is_recovery}}
+
+{{#is_no_data}}
+⚠️ **NO DATA: 5xx Monitor Stopped Reporting**
+
+The monitor has stopped receiving data. This may indicate a metrics pipeline issue.
+
+- **Service:** {{service.name}}
+- **Last data received:** {{last_triggered_at}}
+
+Check your APM agent, DogStatsD, or trace ingestion pipeline.
+
+[View Monitor]({{url}})
+{{/is_no_data}}
+
+@your-email@example.com
