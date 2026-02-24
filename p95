@@ -1,0 +1,71 @@
+Subject: {{#is_alert}}🔴 ALERT: APIM p95 Latency > 15s - {{apim_publisher_name.name}}{{/is_alert}}{{#is_warning}}🟡 WARNING: APIM p95 Latency Elevated - {{apim_publisher_name.name}}{{/is_warning}}{{#is_recovery}}✅ RECOVERED: APIM p95 Latency - {{apim_publisher_name.name}}{{/is_recovery}}{{#is_no_data}}⚠️ NO DATA: APIM p95 Latency - {{apim_publisher_name.name}}{{/is_no_data}}
+
+{{#is_alert}}
+🔴 ALERT: APIM p95 Latency Exceeded 15s
+
+The p95 response time has been above 15s for the past 10 minutes.
+
+- Publisher: {{apim_publisher_name.name}}
+- Environment: {{apim_publisher_environment_name.name}}
+- Endpoint: /request
+- Current p95: {{value}}s
+- Threshold: 15s
+- Triggered at: {{last_triggered_at}}
+
+Suggested actions:
+1. Check backend processing logs in Datadog Log Explorer
+2. Inspect Kubernetes pod health for the affected service
+3. Check Azure Application Gateway metrics for upstream issues
+4. Review recent deployments
+
+[View Monitor]({{url}})
+{{/is_alert}}
+
+{{#is_warning}}
+🟡 WARNING: APIM p95 Latency Elevated (>10s)
+
+The p95 response time is elevated but has not yet crossed the critical threshold.
+
+- Publisher: {{apim_publisher_name.name}}
+- Environment: {{apim_publisher_environment_name.name}}
+- Endpoint: /request
+- Current p95: {{value}}s
+- Warning threshold: 10s
+
+Monitor closely — no action required yet unless trend continues.
+
+[View Monitor]({{url}})
+{{/is_warning}}
+
+{{#is_recovery}}
+✅ RECOVERED: APIM p95 Latency Back to Normal
+
+The p95 response time has dropped back below the threshold.
+
+- Publisher: {{apim_publisher_name.name}}
+- Environment: {{apim_publisher_environment_name.name}}
+- Endpoint: /request
+- Current p95: {{value}}s
+- Threshold: 15s
+- Recovered at: {{last_triggered_at}}
+
+No further action required. Please document the incident if applicable.
+
+[View Monitor]({{url}})
+{{/is_recovery}}
+
+{{#is_no_data}}
+⚠️ NO DATA: APIM p95 Latency Monitor Stopped Reporting
+
+The monitor has stopped receiving data. This may indicate a logging pipeline issue.
+
+- Publisher: {{apim_publisher_name.name}}
+- Environment: {{apim_publisher_environment_name.name}}
+- Last data received: {{last_triggered_at}}
+
+Check Azure Application Gateway logs and the external log collector on Kubernetes.
+
+[View Monitor]({{url}})
+{{/is_no_data}}
+
+@your-email@example.com
